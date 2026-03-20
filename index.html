@@ -1,0 +1,705 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Budget Monitoring - Business Edition</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root { 
+            --primary: #2c7be5; --success: #00b894; --danger: #ff4757; --warning: #e17055; 
+            --dark: #12141d; --bg: #f4f7fc; --card-bg: white; --text: #333; 
+            --border: #dee2e6; --shadow: 0 4px 20px rgba(0,0,0,0.08); 
+            --sidebar-width: 240px;
+            --input-bg: #f9fbfd;
+        }
+        [data-theme="dark"] { 
+            --bg: #1a1c23; --card-bg: #242731; --text: #eeeeee; --border: #323541; 
+            --shadow: 0 4px 20px rgba(0,0,0,0.3); --input-bg: #2a2e39;
+        }
+
+        body { font-family: 'Segoe UI', sans-serif; background: var(--bg); margin: 0; color: var(--text); overflow-x: hidden; transition: 0.3s; }
+
+        /* --- REFINED LOGIN DESIGN --- */
+        #loginOverlay {
+            position: fixed; inset: 0; 
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); 
+            display: flex; align-items: center; justify-content: center; z-index: 9999;
+            animation: fadeInOverlay 0.6s ease-out;
+        }
+
+        .login-card {
+            background: var(--card-bg);
+            padding: 30px 25px;
+            border-radius: 16px;
+            width: 310px; /* Smaller, more compact width */
+            text-align: center;
+            box-shadow: 0 15px 35px rgba(0,0,0,0.4);
+            border: 1px solid rgba(255,255,255,0.1);
+            animation: slideUp 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        .login-brand {
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            color: var(--primary);
+            font-weight: 800;
+            margin-bottom: 5px;
+            display: block;
+        }
+
+        .login-card h3 {
+            margin: 0 0 8px;
+            font-size: 20px;
+            color: var(--text);
+            font-weight: 700;
+        }
+
+        .login-card p {
+            color: #888;
+            font-size: 12px;
+            margin: 0 0 25px;
+            line-height: 1.4;
+        }
+
+        .pass-input-wrapper {
+            margin-bottom: 20px;
+        }
+
+        #passInput {
+            text-align: center;
+            font-size: 22px;
+            letter-spacing: 8px;
+            padding: 12px;
+            border: 1.5px solid var(--border);
+            border-radius: 10px;
+            transition: all 0.2s ease;
+            background: var(--input-bg);
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+        #passInput:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 10px rgba(44, 123, 229, 0.15);
+            outline: none;
+        }
+
+        .btn-unlock {
+            width: 100%;
+            padding: 12px;
+            background: var(--primary);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-weight: 600;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-unlock:hover {
+            background: #1a5bb4;
+            transform: translateY(-1px);
+        }
+
+        @keyframes fadeInOverlay { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes shake { 0%, 100% {transform:translateX(0);} 25% {transform:translateX(-8px);} 75% {transform:translateX(8px);} }
+        /* --- END LOGIN DESIGN --- */
+
+        #toast {
+            position: fixed; top: 20px; left: 50%; transform: translate(-50%, -150%);
+            padding: 12px 30px; color: white; border-radius: 50px; box-shadow: 0 10px 25px rgba(0,0,0,0.2); 
+            z-index: 9999; transition: transform 0.5s; font-weight: 600; font-size: 14px; pointer-events: none;
+        }
+        #toast.show { transform: translate(-50%, 0); background: var(--success); }
+        #toast.error { background: var(--danger) !important; }
+
+        .sidebar {
+            position: fixed; left: calc(-1 * var(--sidebar-width)); top: 0; height: 100%;
+            width: var(--sidebar-width); background: var(--card-bg); border-right: 1px solid var(--border);
+            transition: transform 0.3s ease; z-index: 2000; display: flex; flex-direction: column;
+        }
+        .sidebar.open { transform: translateX(var(--sidebar-width)); }
+        .sidebar-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.4); display: none; z-index: 1500; backdrop-filter: blur(2px); }
+        .sidebar-overlay.active { display: block; }
+
+        .nav-scroll { flex: 1; overflow-y: auto; padding-top: 20px; }
+        .nav-item { padding: 12px 25px; font-size: 14px; cursor: pointer; color: var(--text); font-weight: 600; display: flex; align-items: center; gap: 10px; transition: 0.2s; }
+        .nav-item:hover { background: rgba(44, 123, 229, 0.05); }
+        .nav-item.selected { color: var(--primary); background: rgba(44, 123, 229, 0.08); border-left: 4px solid var(--primary); }
+        .sidebar-footer { padding: 20px; border-top: 1px solid var(--border); }
+        .reset-link { color: var(--danger); cursor: pointer; font-size: 12px; font-weight: bold; opacity: 0.7; }
+
+        header { 
+            background: linear-gradient(135deg, var(--primary), #1a5bb4); 
+            color: white; padding: 0 20px; height: 60px; display: flex; 
+            align-items: center; justify-content: space-between; position: sticky; 
+            top: 0; z-index: 1100; 
+        }
+        .hamburger { width: 35px; height: 35px; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 4px; cursor: pointer; background: rgba(255,255,255,0.1); border: none; border-radius: 6px; }
+        .hamburger span { width: 18px; height: 2px; background: white; border-radius: 2px; }
+
+        .sub-nav { 
+            background: var(--card-bg); border-bottom: 1px solid var(--border); 
+            padding: 0 20px; display: flex; gap: 20px; overflow-x: auto; 
+            white-space: nowrap; position: sticky; top: 60px; z-index: 1090;
+            box-shadow: 0 4px 6px -2px rgba(0,0,0,0.05); scrollbar-width: none;
+        }
+        .sub-nav::-webkit-scrollbar { display: none; }
+        
+        .sub-nav-link { 
+            padding: 15px 5px; font-size: 13px; font-weight: 600; color: #888; 
+            text-decoration: none; cursor: pointer; border-bottom: 3px solid transparent; transition: 0.2s;
+        }
+        .sub-nav-link:hover { color: var(--primary); }
+        .sub-nav-link.active { color: var(--primary); border-bottom-color: var(--primary); }
+
+        .modal-overlay, .confirm-overlay { 
+            display: none; position: fixed; inset: 0; background: rgba(18, 20, 29, 0.6); 
+            z-index: 3000; align-items: center; justify-content: center; backdrop-filter: blur(5px); 
+        }
+        .modal-content { 
+            background: var(--card-bg); padding: 30px; border-radius: 16px; width: 360px; max-width: 90%;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25); border: 1px solid var(--border);
+        }
+        .modal-content h3 { margin-top: 0; font-size: 18px; font-weight: 700; margin-bottom: 20px; color: var(--primary); }
+
+        .form-group { margin-bottom: 16px; }
+        .form-label { display: block; font-size: 11px; font-weight: 700; text-transform: uppercase; color: #888; margin-bottom: 6px; letter-spacing: 0.5px; }
+        
+        input[type="text"], input[type="number"], input[type="date"], input[type="password"], select, textarea {
+            width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border); 
+            background: var(--input-bg); color: var(--text); font-size: 14px; outline: none; 
+            transition: all 0.2s; box-sizing: border-box;
+        }
+
+        .btn-group { display: flex; gap: 12px; margin-top: 25px; }
+        .btn-cancel { flex: 1; padding: 12px; border: none; background: transparent; color: #888; cursor: pointer; font-weight: 600; border-radius: 8px; transition: 0.2s; }
+        .btn-save { flex: 1; padding: 12px; border: none; background: var(--primary); color: white; cursor: pointer; font-weight: 600; border-radius: 8px; }
+
+        .main-content { padding: 20px; max-width: 1100px; margin: 0 auto; }
+        .controls-bar { background: var(--card-bg); padding: 12px; border-radius: 10px; display: flex; gap: 10px; align-items: center; margin-bottom: 20px; box-shadow: var(--shadow); flex-wrap: wrap; }
+        
+        .grid-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 12px; margin-bottom: 20px; }
+        .card { padding: 12px; border-radius: 10px; font-size: 10px; color: white; text-align: center; }
+        .card span { font-size: 16px; font-weight: 700; display: block; margin-top: 5px; }
+        .income { background: var(--success); } .expense { background: var(--danger); } .unbudget { background: var(--warning); }
+        .liability { background: #6c5ce7; } .savings { background: #00cec9; } .biz-profit { background: #4b6584; }
+
+        .card-trans { 
+            background: var(--card-bg) !important; 
+            color: var(--text) !important; 
+            border: 1px solid var(--border);
+            border-top: 4px solid var(--accent-color);
+            box-shadow: var(--shadow);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            padding: 15px 10px;
+        }
+        .card-trans small { font-weight: 700; color: #888; text-transform: uppercase; letter-spacing: 0.5px; }
+        .card-trans span { color: var(--text); font-size: 18px; margin-top: 8px; }
+
+        .chart-grid { display: grid; grid-template-columns: 1fr 2fr; gap: 20px; margin-bottom: 30px; }
+        
+        .table-container { width: 100%; overflow-x: auto; border-radius: 12px; box-shadow: var(--shadow); background: var(--card-bg); margin-bottom: 30px; border: 1px solid var(--border); }
+        table { width: 100%; border-collapse: collapse; min-width: 500px; }
+        th, td { padding: 12px 15px; text-align: left; border-bottom: 1px solid var(--border); font-size: 13px; }
+        
+        .action-delete { color: var(--danger); border: none; background: none; cursor: pointer; font-size: 11px; font-weight: bold; text-decoration: underline; }
+        .action-edit { color: var(--primary); border: none; background: none; cursor: pointer; font-size: 11px; font-weight: bold; text-decoration: underline; margin-right: 10px;}
+        
+        .add-btn { background: var(--primary); color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 12px; white-space: nowrap; }
+        .section { display: none; }
+        .section.active { display: block; animation: fadeIn 0.3s ease; }
+        
+        .sum-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px; margin-bottom: 20px; }
+        .sum-card { background: var(--card-bg); padding: 15px; border-radius: 12px; border: 1px solid var(--border); text-align: center; }
+        .note-card { background: var(--card-bg); padding: 15px; border-radius: 12px; border: 1px solid var(--border); margin-bottom: 15px; box-shadow: var(--shadow); }
+
+        @media (max-width: 768px) {
+            .chart-grid { grid-template-columns: 1fr; }
+            .grid-stats { grid-template-columns: 1fr 1fr; }
+            .controls-bar { justify-content: center; }
+            .controls-bar select { flex: 1; }
+            header { padding: 0 10px; }
+        }
+
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+    </style>
+</head>
+<body>
+
+<div id="toast">Success!</div>
+<div class="sidebar-overlay" id="overlay" onclick="toggleSidebar()"></div>
+
+<div id="loginOverlay">
+    <div class="login-card">
+        <span class="login-brand">Private Portal</span>
+        <h3>Budget Monitoring</h3>
+        <p>Please enter your security pin to access the financial dashboard.</p>
+        <div class="pass-input-wrapper">
+            <input type="password" id="passInput" maxlength="4" placeholder="••••" autocomplete="off">
+        </div>
+        <button onclick="checkLogin()" class="btn-unlock">Unlock Dashboard</button>
+    </div>
+</div>
+
+<div id="mainApp" style="display:none;">
+    <nav class="sidebar" id="sidebar">
+        <div style="padding: 20px 25px;"><h2 style="margin:0; font-size: 18px; color: var(--primary);">Main Menu</h2></div>
+        <div class="nav-scroll">
+            <div class="nav-item" id="nav-overview" onclick="switchSection('overview', this)">📊 Dashboard</div>
+            <div class="nav-item" id="nav-business-hub" onclick="switchSection('business-hub', this)">💼 Business</div>
+        </div>
+        <div class="sidebar-footer"><div class="reset-link" onclick="triggerFullReset()">⚠️ Reset Data</div></div>
+    </nav>
+
+    <header>
+        <div style="display:flex; align-items:center; gap:12px;"><button class="hamburger" onclick="toggleSidebar()"><span></span><span></span><span></span></button><div style="font-weight:700; font-size:16px;">Budget Monitoring</div></div>
+        <div style="display:flex; align-items:center; gap:8px;"><button onclick="toggleTheme()" style="background:rgba(255,255,255,0.2); border:none; color:white; padding:5px 10px; border-radius:12px; cursor:pointer; font-size:11px;">🌙 Theme</button><button onclick="logout()" style="background:rgba(255, 71, 87, 0.2); border:none; color:white; padding:5px 10px; border-radius:12px; cursor:pointer; font-size:11px;">Logout</button></div>
+    </header>
+
+    <div id="subNavGeneral" class="sub-nav" style="display:none;">
+        <a class="sub-nav-link" id="link-overview" onclick="switchSection('overview')">Overview</a>
+        <a class="sub-nav-link" id="link-income" onclick="switchSection('income')">Income</a>
+        <a class="sub-nav-link" id="link-budget" onclick="switchSection('budget')">Budgeted</a>
+        <a class="sub-nav-link" id="link-unbudget" onclick="switchSection('unbudget')">Unbudgeted</a>
+        <a class="sub-nav-link" id="link-liability" onclick="switchSection('liability')">Liability</a>
+        <a class="sub-nav-link" id="link-savings" onclick="switchSection('savings')">Savings History</a>
+    </div>
+
+    <div id="subNavBusiness" class="sub-nav" style="display:none;">
+        <a class="sub-nav-link" id="link-business-hub" onclick="switchSection('business-hub')">Summary</a>
+        <a class="sub-nav-link" id="link-contribution" onclick="switchSection('contribution')">Contributions</a>
+        <a class="sub-nav-link" id="link-profitshare" onclick="switchSection('profitshare')">Profit Share</a>
+        <a class="sub-nav-link" id="link-harvest" onclick="switchSection('harvest')">Harvest Accounts</a>
+        <a class="sub-nav-link" id="link-business-notes" onclick="switchSection('business-notes')">Notes</a>
+    </div>
+
+    <div class="main-content">
+        <div class="controls-bar">
+            <select id="month" style="width:130px;"></select>
+            <select id="year" style="width:90px;"></select>
+            <div style="flex-grow: 1;"></div> 
+        </div>
+
+        <div id="overview" class="section">
+            <div class="grid-stats">
+                <div class="card income">Income<br><span id="totalIncome">₱0.00</span></div>
+                <div class="card biz-profit">Biz Profit<br><span id="totalBizProfit">₱0.00</span></div>
+                <div class="card expense">Budgeted<br><span id="totalBudgeted">₱0.00</span></div>
+                <div class="card unbudget">Unbudgeted<br><span id="totalUnbudgeted">₱0.00</span></div>
+                <div class="card liability">Liability<br><span id="totalLiability">₱0.00</span></div>
+                <div class="card savings">Saved<br><span id="totalSavings">₱0.00</span></div>
+            </div>
+            <div class="chart-grid">
+                <div style="background:var(--card-bg); padding:20px; border-radius:12px; height:320px; box-shadow:var(--shadow);"><canvas id="budgetChart"></canvas></div>
+                <div style="background:var(--card-bg); padding:20px; border-radius:12px; height:320px; box-shadow:var(--shadow);"><canvas id="monthlyTrendChart"></canvas></div>
+            </div>
+        </div>
+
+        <div id="business-hub" class="section">
+            <div class="sum-grid">
+                <div class="sum-card"><div>Business Revenue</div><div id="hubBizRev" style="color:var(--primary); font-size:20px; font-weight:800;">₱0.00</div></div>
+                <div class="sum-card"><div>Net Business Profit</div><div id="hubBizNet" style="color:var(--success); font-size:20px; font-weight:800;">₱0.00</div></div>
+            </div>
+            <p style="text-align:center; color:#888; margin-top:40px;">Select a link above to manage business operations.</p>
+        </div>
+
+        <div id="harvest" class="section">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px; flex-wrap:wrap; gap:10px;">
+                <h3>Harvest Accounts</h3>
+                <div style="display:flex; gap:10px;">
+                    <button class="add-btn" style="background:var(--success)" onclick="openAddModal('harvest')">+ New Account</button>
+                    <button class="add-btn" style="background:var(--danger)" onclick="openAddModal('harvest_expense')">+ Add Expense</button>
+                </div>
+            </div>
+            <div class="grid-stats" style="margin-bottom: 25px;">
+                <div class="card card-trans" style="--accent-color: var(--primary);"><small>Revenue</small><span id="harvTotalRev">₱0.00</span></div>
+                <div class="card card-trans" style="--accent-color: var(--danger);"><small>Expenses</small><span id="harvTotalExp">₱0.00</span></div>
+                <div class="card card-trans" style="--accent-color: var(--success);"><small>Net Profit</small><span id="harvTotalNet">₱0.00</span></div>
+            </div>
+            <div id="harvestContainer"></div>
+        </div>
+
+        <div id="income" class="section">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;"><h3>Income</h3><button class="add-btn" onclick="openAddModal('income')">+ Add Income</button></div>
+            <div class="table-container"><table><thead><tr><th>Date</th><th>Description</th><th>Amount</th><th>Action</th></tr></thead><tbody id="incomeTable"></tbody></table></div>
+        </div>
+        <div id="budget" class="section">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;"><h3>Budgeted</h3><button class="add-btn" onclick="openAddModal('budget')">+ Add Expense</button></div>
+            <div class="table-container"><table><thead><tr><th>Date</th><th>Category</th><th>Amount</th><th>Action</th></tr></thead><tbody id="expenseTable"></tbody></table></div>
+        </div>
+        <div id="unbudget" class="section">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;"><h3>Unbudgeted</h3><button class="add-btn" onclick="openAddModal('unbudget')">+ Add Entry</button></div>
+            <div class="table-container"><table><thead><tr><th>Date</th><th>Description</th><th>Amount</th><th>Action</th></tr></thead><tbody id="unTable"></tbody></table></div>
+        </div>
+        <div id="liability" class="section">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;"><h3>Liability</h3><button class="add-btn" onclick="openAddModal('liability')">+ Add Debt</button></div>
+            <div class="table-container"><table><thead><tr><th>Date</th><th>Description</th><th>Amount</th><th>Action</th></tr></thead><tbody id="liaTable"></tbody></table></div>
+        </div>
+        <div id="savings" class="section">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;"><h3>Savings History</h3><select id="savingsFilter" onchange="updateSavingsTab()" style="width:120px; padding:6px;"><option value="monthly">Monthly</option><option value="yearly">Yearly</option></select></div>
+            <div class="table-container"><table><thead><tr><th>Period</th><th>Net Savings</th></tr></thead><tbody id="savingsTable"></tbody></table></div>
+            <div class="sum-card" style="border: 2px solid var(--primary);"><div>Grand Total Savings</div><div id="grandTotalDisplay" style="font-size:24px; font-weight:800;">₱0.00</div></div>
+        </div>
+        <div id="contribution" class="section">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;"><h3>Partner Contributions</h3><button class="add-btn" onclick="openAddModal('contribution')">+ Add Contribution</button></div>
+            <div class="sum-grid">
+                <div class="sum-card"><div>Jerome Balance</div><div id="sumJerome" style="color:var(--primary); font-weight:700;">₱0.00</div></div>
+                <div class="sum-card"><div>Jennifer Balance</div><div id="sumJennifer" style="color:var(--success); font-weight:700;">₱0.00</div></div>
+            </div>
+            <div class="table-container"><table><thead><tr><th>Date</th><th>Contributor</th><th>Desc</th><th>Amount</th><th>Action</th></tr></thead><tbody id="conTable"></tbody></table></div>
+            <div style="margin-top:20px; font-weight:700;">Deduction History</div>
+            <div class="table-container"><table id="conHistoryTable"></table></div>
+        </div>
+        <div id="profitshare" class="section">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;"><h3>Profit Share Overflow</h3></div>
+            <div class="sum-grid">
+                <div class="sum-card"><div>Jerome Share</div><div id="shareJerome" style="color:var(--primary); font-weight:700;">₱0.00</div></div>
+                <div class="sum-card"><div>Jennifer Share</div><div id="shareJennifer" style="color:var(--success); font-weight:700;">₱0.00</div></div>
+            </div>
+            <div class="table-container"><table><thead><tr><th>Date</th><th>Account</th><th>Desc</th><th>Overflow</th></tr></thead><tbody id="shareTable"></tbody></table></div>
+        </div>
+        <div id="business-notes" class="section">
+            <div id="notesContainer"></div>
+        </div>
+    </div>
+</div>
+
+<div id="addModal" class="modal-overlay">
+    <div class="modal-content">
+        <h3 id="modalTitle">Entry</h3>
+        <div id="standardFields">
+            <div class="form-group"><label class="form-label">Transaction Date</label><input type="date" id="modalDate"></div>
+            <div class="form-group" id="modalContributorBox" style="display:none;"><label class="form-label">Partner</label><select id="modalContributor"><option value="Jerome">Jerome</option><option value="Jennifer">Jennifer</option></select></div>
+            <div class="form-group" id="modalCatBox" style="display:none;"><label class="form-label">Category</label><select id="modalCat"><option>FOOD</option><option>OFFICE</option><option>INTERNET</option><option>WATER</option><option>ELECTRICITY</option><option>ALLOWANCE</option><option>GROCERY</option><option>MISCELLANEOUS</option></select></div>
+            <div class="form-group" id="modalAccountBox" style="display:none;"><label class="form-label">Harvest Account</label><select id="modalAccountSelect"></select></div>
+            <div class="form-group" id="modalDescBox"><label class="form-label">Description / Label</label><input type="text" id="modalDesc" placeholder="What is this for?"></div>
+            <div class="form-group"><label class="form-label">Amount (PHP)</label><input type="number" id="modalAmount" placeholder="0.00"></div>
+        </div>
+        <div id="noteFields" style="display:none;"><div class="form-group"><label class="form-label">Note Content</label><textarea id="modalNoteBody" rows="8" placeholder="Type your business notes here..."></textarea></div></div>
+        <div class="btn-group"><button onclick="closeModal('addModal')" class="btn-cancel">Cancel</button><button onclick="processAdd()" class="btn-save">Confirm Entry</button></div>
+    </div>
+</div>
+
+<div id="deleteConfirmModal" class="confirm-overlay">
+    <div class="modal-content" style="text-align:center;">
+        <h3 style="color:var(--danger);">Delete Entry?</h3>
+        <p style="font-size:14px; color:#888;">This action cannot be undone.</p>
+        <div class="btn-group"><button onclick="closeConfirm()" class="btn-cancel">Cancel</button><button id="confirmBtn" class="btn-save" style="background:var(--danger);">Delete</button></div>
+    </div>
+</div>
+
+<div id="resetModal" class="confirm-overlay">
+    <div class="modal-content" style="text-align:center;">
+        <h3 style="color:var(--danger);">Wipe System Data?</h3>
+        <p style="font-size:14px; color:#888;">All your financial history will be permanently erased.</p>
+        <div class="btn-group"><button onclick="closeModal('resetModal')" class="btn-cancel">Cancel</button><button onclick="executeFullReset()" class="btn-save" style="background:var(--danger);">Wipe All</button></div>
+    </div>
+</div>
+
+<script src="https://unpkg.com/dexie/dist/dexie.js"></script>
+<script src="https://unpkg.com/dexie-cloud-addon/dist/dexie-cloud-addon.js"></script>
+
+<script>
+// --- DEXIE CLOUD SETUP ---
+const db = new Dexie("BudgetBusinessDB", { addons: [dexieCloud] });
+
+db.version(1).stores({
+    incomes: '@id, date, desc',
+    expenses: '@id, date, desc, cat',
+    unbudgeted: '@id, date, desc',
+    liabilities: '@id, date, desc',
+    harvests: '@id, desc',
+    harvestTransactions: '@id, date, harvestId',
+    contributions: '@id, date, contributor',
+    businessNotes: '@id, date'
+});
+
+db.cloud.configure({
+    databaseUrl: "https://z47mg0loj.dexie.cloud", // REPLACE WITH YOUR URL
+    requireLogin: true
+});
+
+// --- STATE VARIABLES ---
+let incomes=[], expenses=[], unbudgeted=[], liabilities=[], harvests=[], harvestTransactions=[], contributions=[], businessNotes=[], myChart, myTrendChart, currentAddType = '', editId = null, deleteTgt={};
+const fullMonths=["January","February","March","April","May","June","July","August","September","October","November","December"];
+
+// --- UTILITIES ---
+function formatAmount(v){ return (v < 0 ? "-₱" : "₱") + Math.abs(v).toLocaleString(undefined,{minimumFractionDigits:2}); }
+function showToast(m, isError = false) { const t = document.getElementById("toast"); t.innerText = m; t.classList.remove("error", "show"); void t.offsetWidth; if(isError) t.classList.add("error"); t.classList.add("show"); setTimeout(() => t.classList.remove("show"), 2500); }
+function toggleSidebar(){ document.getElementById('sidebar').classList.toggle('open'); document.getElementById('overlay').classList.toggle('active'); }
+function closeModal(id){ document.getElementById(id).style.display="none"; editId = null; }
+function closeConfirm(){ document.getElementById('deleteConfirmModal').style.display='none'; }
+function logout() { db.cloud.logout(); location.reload(); }
+function applyTheme(t) { document.body.setAttribute("data-theme", t); localStorage.setItem("theme", t); }
+function toggleTheme(){ applyTheme(document.body.getAttribute("data-theme") === "dark" ? "light" : "dark"); render(); }
+
+// --- NAVIGATION ---
+function switchSection(id, el){
+    const genTabs = ['overview', 'income', 'budget', 'unbudget', 'liability', 'savings'];
+    const bizTabs = ['business-hub', 'contribution', 'profitshare', 'harvest', 'business-notes'];
+    document.querySelectorAll('.section').forEach(s=>s.classList.remove('active')); 
+    const target = document.getElementById(id);
+    if(target) target.classList.add('active');
+    
+    if(genTabs.includes(id)) {
+        document.getElementById('subNavGeneral').style.display = 'flex';
+        document.getElementById('subNavBusiness').style.display = 'none';
+        document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('selected'));
+        document.getElementById('nav-overview').classList.add('selected');
+    } else if(bizTabs.includes(id)) {
+        document.getElementById('subNavGeneral').style.display = 'none';
+        document.getElementById('subNavBusiness').style.display = 'flex';
+        document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('selected'));
+        document.getElementById('nav-business-hub').classList.add('selected');
+    }
+    document.querySelectorAll('.sub-nav-link').forEach(l => l.classList.remove('active'));
+    const link = document.getElementById('link-' + id);
+    if(link) link.classList.add('active');
+    if(el && window.innerWidth<768) toggleSidebar(); 
+    localStorage.setItem("activeTab", id);
+    render();
+}
+
+// --- DATABASE OPERATIONS ---
+async function load(){
+    applyTheme(localStorage.getItem("theme") || "light");
+    
+    // Auth check - Dexie Cloud handles the login overlay
+    db.cloud.currentUser.subscribe(user => {
+        if (user) {
+            document.getElementById("loginOverlay").style.display="none";
+            document.getElementById("mainApp").style.display="block";
+        }
+    });
+
+    // Pull real-time data from Dexie
+    incomes = await db.incomes.toArray();
+    expenses = await db.expenses.toArray();
+    unbudgeted = await db.unbudgeted.toArray();
+    liabilities = await db.liabilities.toArray();
+    harvests = await db.harvests.toArray();
+    harvestTransactions = await db.harvestTransactions.toArray();
+    contributions = await db.contributions.toArray();
+    businessNotes = await db.businessNotes.toArray();
+
+    monthSel.value = "all";
+    switchSection(localStorage.getItem("activeTab") || "overview");
+    render();
+}
+
+// Observes changes in database and re-renders automatically
+db.on('changes', () => load());
+
+async function processAdd() {
+    if(currentAddType === 'note') {
+        const body = document.getElementById('modalNoteBody').value; if(!body.trim()) return;
+        const noteData = { date: new Date().toLocaleString(), text: body };
+        if(editId !== null) await db.businessNotes.update(editId, noteData);
+        else await db.businessNotes.add(noteData);
+    } else {
+        const date = document.getElementById('modalDate').value, desc = document.getElementById('modalDesc').value, amt = Number(document.getElementById('modalAmount').value);
+        if(!date || !amt) return;
+        const newData = {date, desc, amount: amt};
+        
+        if(currentAddType === 'budget') newData.cat = document.getElementById('modalCat').value;
+        if(currentAddType === 'contribution') newData.contributor = document.getElementById('modalContributor').value;
+        if(currentAddType === 'harvest_expense') newData.harvestId = document.getElementById('modalAccountSelect').value;
+        
+        const tableMap = { income: db.incomes, budget: db.expenses, unbudget: db.unbudgeted, liability: db.liabilities, contribution: db.contributions, harvest: db.harvests, harvest_expense: db.harvestTransactions };
+        const table = tableMap[currentAddType];
+
+        if(editId !== null) await table.update(editId, newData);
+        else await table.add(newData);
+    }
+    closeModal('addModal');
+    showToast("Synced to Cloud!");
+    await load();
+}
+
+document.getElementById('confirmBtn').onclick = async () => {
+    const tableMap = { income: db.incomes, exp: db.expenses, un: db.unbudgeted, lia: db.liabilities, con: db.contributions, note: db.businessNotes, har_acc: db.harvests, har_trans: db.harvestTransactions };
+    await tableMap[deleteTgt.type].delete(deleteTgt.id);
+    closeConfirm();
+    await load();
+};
+
+function deleteItem(type, id){ deleteTgt={type, id:id}; document.getElementById('deleteConfirmModal').style.display='flex'; }
+
+// --- RENDERING ENGINE (Dashboard/Charts logic stays the same) ---
+function render(){
+    const fInc=filterData(incomes), fExp=filterData(expenses), fUn=filterData(unbudgeted), fLia=filterData(liabilities);
+    const inc = fInc.reduce((a,b)=>a+b.amount,0), bud = fExp.reduce((a,b)=>a+b.amount,0), unb = fUn.reduce((a,b)=>a+b.amount,0), lia = fLia.reduce((a,b)=>a+b.amount,0), rem = inc-(bud+unb+lia);
+    
+    document.getElementById("totalIncome").innerText=formatAmount(inc); 
+    document.getElementById("totalBudgeted").innerText=formatAmount(bud);
+    document.getElementById("totalUnbudgeted").innerText=formatAmount(unb); 
+    document.getElementById("totalLiability").innerText=formatAmount(lia); 
+    document.getElementById("totalSavings").innerText=formatAmount(rem);
+
+    let totalRevenue = harvests.reduce((a, b) => a + b.amount, 0), totalExpenses = harvestTransactions.reduce((a, b) => a + b.amount, 0), netProfit = totalRevenue - totalExpenses;
+    document.getElementById("totalBizProfit").innerText = formatAmount(netProfit);
+    document.getElementById("hubBizRev").innerText = formatAmount(totalRevenue);
+    document.getElementById("hubBizNet").innerText = formatAmount(netProfit);
+
+    // Contributions Logic
+    let jConTotal = contributions.filter(c => c.contributor === 'Jerome').reduce((a,b) => a + b.amount, 0);
+    let nConTotal = contributions.filter(c => c.contributor === 'Jennifer').reduce((a,b) => a + b.amount, 0);
+    let jShare = 0, nShare = 0, shareHtml = "", historyRows = [], jSpent = 0, nSpent = 0;
+
+    harvestTransactions.forEach((t) => {
+        let isJ = t.desc.toLowerCase().includes('jerome'), isN = t.desc.toLowerCase().includes('jennifer');
+        const acc = harvests.find(h => h.id === t.harvestId);
+        if(isJ) {
+            let bal = jConTotal - jSpent, ded = Math.min(t.amount, bal), over = t.amount - ded;
+            jSpent += ded; if(ded > 0) historyRows.push({ date: t.date, who: 'Jerome', details: `${acc?.desc}: ${t.desc}`, amt: ded });
+            if(over > 0) { jShare += over; shareHtml += `<tr><td>${t.date}</td><td>${acc?.desc}</td><td>${t.desc}</td><td style="color:var(--danger)">${formatAmount(over)}</td></tr>`; }
+        }
+        if(isN) {
+            let bal = nConTotal - nSpent, ded = Math.min(t.amount, bal), over = t.amount - ded;
+            nSpent += ded; if(ded > 0) historyRows.push({ date: t.date, who: 'Jennifer', details: `${acc?.desc}: ${t.desc}`, amt: ded });
+            if(over > 0) { nShare += over; shareHtml += `<tr><td>${t.date}</td><td>${acc?.desc}</td><td>${t.desc}</td><td style="color:var(--danger)">${formatAmount(over)}</td></tr>`; }
+        }
+    });
+
+    document.getElementById("sumJerome").innerText = formatAmount(jConTotal - jSpent);
+    document.getElementById("sumJennifer").innerText = formatAmount(nConTotal - nSpent);
+    document.getElementById("shareJerome").innerText = formatAmount(jShare);
+    document.getElementById("shareJennifer").innerText = formatAmount(nShare);
+    document.getElementById("shareTable").innerHTML = shareHtml || '<tr><td colspan="4" style="text-align:center">No overflow.</td></tr>';
+    document.getElementById("conTable").innerHTML = contributions.map((c) => `<tr><td>${c.date}</td><td>${c.contributor}</td><td>${c.desc}</td><td>${formatAmount(c.amount)}</td><td><button class="action-edit" onclick="openAddModal('contribution','${c.id}')">Edit</button><button class="action-delete" onclick="deleteItem('con','${c.id}')">Delete</button></td></tr>`).join('');
+    document.getElementById("conHistoryTable").innerHTML = historyRows.map(r => `<tr><td>${r.date}</td><td>${r.who}</td><td>${r.details}</td><td>-${formatAmount(r.amt)}</td></tr>`).join('');
+    
+    // Mapping tables
+    const mapper = (type, label) => (d) => `<tr><td>${d.date}</td><td>${d.desc || d.cat}</td><td>${formatAmount(d.amount)}</td><td><button class="action-edit" onclick="openAddModal('${type}','${d.id}')">Edit</button><button class="action-delete" onclick="deleteItem('${label}','${d.id}')">Delete</button></td></tr>`;
+    document.getElementById("incomeTable").innerHTML=fInc.map(mapper('income', 'income')).join('');
+    document.getElementById("expenseTable").innerHTML=fExp.map(mapper('budget', 'exp')).join('');
+    document.getElementById("unTable").innerHTML=fUn.map(mapper('unbudget', 'un')).join('');
+    document.getElementById("liaTable").innerHTML=fLia.map(mapper('liability', 'lia')).join('');
+    
+    updateCharts(bud, unb, lia, rem); renderHarvests(); renderNotes(); updateSavingsTab();
+}
+
+function filterData(data){
+    return data.filter(d=>{
+        let dt=new Date(d.date), mMatch = monthSel.value === "all" || dt.getMonth() == monthSel.value, yMatch = dt.getFullYear() == yearSel.value;
+        return mMatch && yMatch;
+    });
+}
+
+function updateSavingsTab() {
+    const curY = yearSel.value, mode = document.getElementById("savingsFilter").value;
+    let summary = {}; let grandTotal = 0;
+    [...incomes, ...expenses, ...unbudgeted, ...liabilities].forEach(item => {
+        let d = new Date(item.date), y = d.getFullYear(), m = d.getMonth(), amt = incomes.find(i=>i.id===item.id) ? item.amount : -item.amount;
+        grandTotal += amt;
+        if (mode === 'monthly' && y == curY) summary[m] = (summary[m]||0) + amt;
+        else if (mode === 'yearly') summary[y] = (summary[y]||0) + amt;
+    });
+    let h = "";
+    if (mode === 'monthly') fullMonths.forEach((m, i) => { if(summary[i] !== undefined) h += `<tr><td>${m} ${curY}</td><td>${formatAmount(summary[i])}</td></tr>`; });
+    else if (mode === 'yearly') Object.keys(summary).sort().forEach(y => { h += `<tr><td>Year ${y}</td><td>${formatAmount(summary[y])}</td></tr>`; });
+    document.getElementById("savingsTable").innerHTML = h || "<tr><td colspan='2' style='text-align:center'>No activity</td></tr>";
+    document.getElementById("grandTotalDisplay").innerText = formatAmount(grandTotal);
+}
+
+function updateCharts(b, u, l, r) {
+    const ctx = document.getElementById('budgetChart').getContext('2d');
+    if (myChart) myChart.destroy();
+    myChart = new Chart(ctx, { type: 'doughnut', data: { labels: ['Budgeted', 'Unbudgeted', 'Debt', 'Saved'], datasets: [{ data: [b, u, l, r > 0 ? r : 0], backgroundColor: ['#2c7be5', '#e17055', '#6c5ce7', '#00cec9'], borderWidth: 0 }] }, options: { maintainAspectRatio: false } });
+    const curYear = yearSel.value;
+    let monthlyIncome = Array(12).fill(0), monthlyExpense = Array(12).fill(0);
+    const proc = (arr, tArr) => arr.forEach(it => { let d = new Date(it.date); if(d.getFullYear()==curYear) tArr[d.getMonth()] += it.amount; });
+    proc(incomes, monthlyIncome); proc(expenses, monthlyExpense); proc(unbudgeted, monthlyExpense); proc(liabilities, monthlyExpense);
+    const ctxTrend = document.getElementById('monthlyTrendChart').getContext('2d');
+    if (myTrendChart) myTrendChart.destroy();
+    myTrendChart = new Chart(ctxTrend, { type: 'bar', data: { labels: ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"], datasets: [{ label: 'Income', data: monthlyIncome, backgroundColor: '#00b894' }, { label: 'Expense', data: monthlyExpense, backgroundColor: '#ff4757' }] }, options: { maintainAspectRatio: false } });
+}
+
+function renderHarvests() {
+    const container = document.getElementById('harvestContainer');
+    let totalRev = harvests.reduce((a, b) => a + b.amount, 0), totalExp = harvestTransactions.reduce((a, b) => a + b.amount, 0), netProfit = totalRev - totalExp;
+    document.getElementById("harvTotalRev").innerText = formatAmount(totalRev);
+    document.getElementById("harvTotalExp").innerText = formatAmount(totalExp);
+    document.getElementById("harvTotalNet").innerText = formatAmount(netProfit);
+    if (harvests.length === 0) { container.innerHTML = `<p style="text-align:center; color:#888;">No harvest accounts.</p>`; return; }
+    container.innerHTML = harvests.map((acc) => {
+        const trans = harvestTransactions.filter(t => t.harvestId === acc.id);
+        const profit = acc.amount - trans.reduce((a, b) => a + b.amount, 0);
+        const list = trans.map(t => `<div style="font-size:12px; padding:4px 0; border-bottom:1px dashed #eee; display:flex; justify-content:space-between;"><span>${t.date} - ${t.desc}</span><span style="color:var(--danger)">-${formatAmount(t.amount)} <button class="action-delete" style="text-decoration:none;" onclick="deleteItem('har_trans', '${t.id}')">×</button></span></div>`).join('');
+        return `<div class="note-card" style="border-left: 4px solid var(--success);"><strong style="color:var(--primary); font-size:16px;">${acc.desc}</strong><br><small>Starting: ${formatAmount(acc.amount)}</small><div style="margin:10px 0; background:rgba(0,0,0,0.02); padding:10px; border-radius:8px;">${list || 'No expenses'}</div><div><strong>Profit: ${formatAmount(profit)}</strong></div><div style="margin-top:10px;"><button class="action-edit" onclick="openAddModal('harvest', '${acc.id}')">Edit</button><button class="action-delete" style="margin-left:10px;" onclick="deleteItem('har_acc', '${acc.id}')">Delete</button></div></div>`;
+    }).join('');
+}
+
+function renderNotes() {
+    const container = document.getElementById('notesContainer');
+    let html = `<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;"><h3>Notes</h3><button class="add-btn" onclick="openAddModal('note')">+ Add Note</button></div>`;
+    if (businessNotes.length === 0) { container.innerHTML = html + `<p style="text-align:center; color:#888;">No notes.</p>`; return; }
+    html += businessNotes.sort((a,b)=>b.id-a.id).map(n => `<div class="note-card"><div><small>${n.date}</small></div><div style="margin-top:5px; white-space: pre-wrap;">${n.text}</div><div style="margin-top:10px;"><button class="action-edit" onclick="openAddModal('note', '${n.id}')">Edit</button><button class="action-delete" onclick="deleteItem('note', '${n.id}')">Delete</button></div></div>`).join('');
+    container.innerHTML = html;
+}
+
+// Selects initialization
+const monthSel=document.getElementById("month"), yearSel=document.getElementById("year");
+fullMonths.forEach((m, i) => monthSel.innerHTML+=`<option value="${i}">${m}</option>`);
+monthSel.innerHTML += `<option value="all">All Months</option>`;
+for(let y=2024; y<=2035; y++) yearSel.innerHTML+=`<option>${y}</option>`;
+yearSel.value=new Date().getFullYear();
+monthSel.onchange=render; yearSel.onchange=render;
+
+// Standard UI Logic
+function openAddModal(type, id = null) {
+    if (type === 'harvest_expense' && harvests.length === 0) { showToast("Create Harvest Account first!", true); return; }
+    currentAddType = type; editId = id;
+    document.getElementById('modalTitle').innerText = (id !== null ? 'Edit ' : 'Add ') + type.replace('-', ' ');
+    document.getElementById('modalCatBox').style.display = type==='budget'?'block':'none';
+    document.getElementById('modalAccountBox').style.display = type==='harvest_expense'?'block':'none';
+    document.getElementById('modalContributorBox').style.display = type==='contribution'?'block':'none';
+    document.getElementById('modalDescBox').style.display = (type==='budget' || type==='note')?'none':'block';
+    
+    if(type === 'harvest_expense') {
+        const accSelect = document.getElementById('modalAccountSelect');
+        accSelect.innerHTML = harvests.map(h => `<option value="${h.id}">${h.desc}</option>`).join('');
+    }
+    
+    if(type === 'note') {
+        document.getElementById('standardFields').style.display = 'none';
+        document.getElementById('noteFields').style.display = 'block';
+        if(id !== null) { 
+            const note = businessNotes.find(n => n.id === id); 
+            document.getElementById('modalNoteBody').value = note.text; 
+        } else { document.getElementById('modalNoteBody').value = ''; }
+    } else {
+        document.getElementById('standardFields').style.display = 'block'; 
+        document.getElementById('noteFields').style.display = 'none';
+        if(id !== null) {
+            const tableMap = { income: incomes, budget: expenses, unbudget: unbudgeted, liability: liabilities, contribution: contributions, harvest: harvests };
+            const entry = tableMap[type].find(x => x.id === id);
+            document.getElementById('modalDate').value = entry.date;
+            document.getElementById('modalDesc').value = entry.desc || '';
+            document.getElementById('modalAmount').value = entry.amount;
+            if(type === 'budget') document.getElementById('modalCat').value = entry.cat;
+            if(type === 'contribution') document.getElementById('modalContributor').value = entry.contributor;
+        } else {
+            document.getElementById('modalDate').value = new Date().toISOString().split('T')[0];
+            document.getElementById('modalDesc').value = ''; document.getElementById('modalAmount').value = '';
+        }
+    }
+    document.getElementById('addModal').style.display = 'flex';
+}
+
+function triggerFullReset() { document.getElementById('resetModal').style.display = 'flex'; }
+async function executeFullReset() { await db.delete(); location.reload(); }
+
+// Start
+load();
+</script>
+</body>
+</html>
