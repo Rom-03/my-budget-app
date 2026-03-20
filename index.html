@@ -403,12 +403,11 @@
         <div class="btn-group"><button onclick="closeModal('resetModal')" class="btn-cancel">Cancel</button><button onclick="executeFullReset()" class="btn-save" style="background:var(--danger);">Wipe All</button></div>
     </div>
 </div>
-
 <script src="https://unpkg.com/dexie/dist/dexie.js"></script>
 <script src="https://unpkg.com/dexie-cloud-addon/dist/dexie-cloud-addon.js"></script>
 
 <script>
-// --- DEXIE CLOUD SETUP ---
+// --- DEXIE CLOUD CONFIGURATION ---
 const db = new Dexie("BudgetBusinessDB", { addons: [dexieCloud] });
 
 db.version(1).stores({
@@ -423,7 +422,7 @@ db.version(1).stores({
 });
 
 db.cloud.configure({
-    databaseUrl: "https://z47mg0loj.dexie.cloud", // REPLACE WITH YOUR URL
+    databaseUrl: "https://z47mg0loj.dexie.cloud",
     requireLogin: true
 });
 
@@ -437,50 +436,32 @@ function showToast(m, isError = false) { const t = document.getElementById("toas
 function toggleSidebar(){ document.getElementById('sidebar').classList.toggle('open'); document.getElementById('overlay').classList.toggle('active'); }
 function closeModal(id){ document.getElementById(id).style.display="none"; editId = null; }
 function closeConfirm(){ document.getElementById('deleteConfirmModal').style.display='none'; }
-function logout() { db.cloud.logout(); location.reload(); }
 function applyTheme(t) { document.body.setAttribute("data-theme", t); localStorage.setItem("theme", t); }
 function toggleTheme(){ applyTheme(document.body.getAttribute("data-theme") === "dark" ? "light" : "dark"); render(); }
 
-// --- NAVIGATION ---
-function switchSection(id, el){
-    const genTabs = ['overview', 'income', 'budget', 'unbudget', 'liability', 'savings'];
-    const bizTabs = ['business-hub', 'contribution', 'profitshare', 'harvest', 'business-notes'];
-    document.querySelectorAll('.section').forEach(s=>s.classList.remove('active')); 
-    const target = document.getElementById(id);
-    if(target) target.classList.add('active');
-    
-    if(genTabs.includes(id)) {
-        document.getElementById('subNavGeneral').style.display = 'flex';
-        document.getElementById('subNavBusiness').style.display = 'none';
-        document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('selected'));
-        document.getElementById('nav-overview').classList.add('selected');
-    } else if(bizTabs.includes(id)) {
-        document.getElementById('subNavGeneral').style.display = 'none';
-        document.getElementById('subNavBusiness').style.display = 'flex';
-        document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('selected'));
-        document.getElementById('nav-business-hub').classList.add('selected');
-    }
-    document.querySelectorAll('.sub-nav-link').forEach(l => l.classList.remove('active'));
-    const link = document.getElementById('link-' + id);
-    if(link) link.classList.add('active');
-    if(el && window.innerWidth<768) toggleSidebar(); 
-    localStorage.setItem("activeTab", id);
-    render();
-}
-
-// --- DATABASE OPERATIONS ---
-async function load(){
+// --- AUTH & LOADING ---
+async function load() {
     applyTheme(localStorage.getItem("theme") || "light");
     
-    // Auth check - Dexie Cloud handles the login overlay
+    // Subscribe to Auth Status
     db.cloud.currentUser.subscribe(user => {
         if (user) {
-            document.getElementById("loginOverlay").style.display="none";
-            document.getElementById("mainApp").style.display="block";
+            // If Cloud user is logged in, hide the "1234" screen
+            document.getElementById("loginOverlay").style.display = "none";
+            document.getElementById("mainApp").style.display = "block";
+            refreshLocalData();
+        } else {
+            // Otherwise, show the Pin screen
+            document.getElementById("loginOverlay").style.display = "flex";
+            document.getElementById("mainApp").style.display = "none";
         }
     });
 
-    // Pull real-time data from Dexie
+    monthSel.value = "all";
+    switchSection(localStorage.getItem("activeTab") || "overview");
+}
+
+async function refreshLocalData() {
     incomes = await db.incomes.toArray();
     expenses = await db.expenses.toArray();
     unbudgeted = await db.unbudgeted.toArray();
@@ -489,15 +470,32 @@ async function load(){
     harvestTransactions = await db.harvestTransactions.toArray();
     contributions = await db.contributions.toArray();
     businessNotes = await db.businessNotes.toArray();
-
-    monthSel.value = "all";
-    switchSection(localStorage.getItem("activeTab") || "overview");
     render();
 }
 
-// Observes changes in database and re-renders automatically
-db.on('changes', () => load());
+// Re-render whenever the cloud pushes a change
+db.on('changes', () => refreshLocalData());
 
+async function checkLogin(){ 
+    if(document.getElementById("passInput").value === "1234"){ 
+        try {
+            // This triggers the Dexie Email Login popup
+            await db.cloud.login(); 
+        } catch (e) {
+            showToast("Cloud connection failed", true);
+            console.error(e);
+        }
+    } else { 
+        showToast("Invalid Key", true);
+        const card = document.querySelector('.login-card');
+        card.style.animation = 'none'; void card.offsetWidth;
+        card.style.animation = 'shake 0.4s';
+    }
+}
+
+function logout() { db.cloud.logout(); location.reload(); }
+
+// --- DATA OPERATIONS ---
 async function processAdd() {
     if(currentAddType === 'note') {
         const body = document.getElementById('modalNoteBody').value; if(!body.trim()) return;
@@ -512,7 +510,8 @@ async function processAdd() {
         if(currentAddType === 'budget') newData.cat = document.getElementById('modalCat').value;
         if(currentAddType === 'contribution') newData.contributor = document.getElementById('modalContributor').value;
         if(currentAddType === 'harvest_expense') newData.harvestId = document.getElementById('modalAccountSelect').value;
-        
+        if(currentAddType === 'harvest') newData.amount = amt; 
+
         const tableMap = { income: db.incomes, budget: db.expenses, unbudget: db.unbudgeted, liability: db.liabilities, contribution: db.contributions, harvest: db.harvests, harvest_expense: db.harvestTransactions };
         const table = tableMap[currentAddType];
 
@@ -520,20 +519,20 @@ async function processAdd() {
         else await table.add(newData);
     }
     closeModal('addModal');
-    showToast("Synced to Cloud!");
-    await load();
+    showToast("Synced!");
+    refreshLocalData();
 }
 
 document.getElementById('confirmBtn').onclick = async () => {
     const tableMap = { income: db.incomes, exp: db.expenses, un: db.unbudgeted, lia: db.liabilities, con: db.contributions, note: db.businessNotes, har_acc: db.harvests, har_trans: db.harvestTransactions };
     await tableMap[deleteTgt.type].delete(deleteTgt.id);
     closeConfirm();
-    await load();
+    refreshLocalData();
 };
 
 function deleteItem(type, id){ deleteTgt={type, id:id}; document.getElementById('deleteConfirmModal').style.display='flex'; }
 
-// --- RENDERING ENGINE (Dashboard/Charts logic stays the same) ---
+// --- RENDER FUNCTIONS ---
 function render(){
     const fInc=filterData(incomes), fExp=filterData(expenses), fUn=filterData(unbudgeted), fLia=filterData(liabilities);
     const inc = fInc.reduce((a,b)=>a+b.amount,0), bud = fExp.reduce((a,b)=>a+b.amount,0), unb = fUn.reduce((a,b)=>a+b.amount,0), lia = fLia.reduce((a,b)=>a+b.amount,0), rem = inc-(bud+unb+lia);
@@ -549,7 +548,6 @@ function render(){
     document.getElementById("hubBizRev").innerText = formatAmount(totalRevenue);
     document.getElementById("hubBizNet").innerText = formatAmount(netProfit);
 
-    // Contributions Logic
     let jConTotal = contributions.filter(c => c.contributor === 'Jerome').reduce((a,b) => a + b.amount, 0);
     let nConTotal = contributions.filter(c => c.contributor === 'Jennifer').reduce((a,b) => a + b.amount, 0);
     let jShare = 0, nShare = 0, shareHtml = "", historyRows = [], jSpent = 0, nSpent = 0;
@@ -574,10 +572,10 @@ function render(){
     document.getElementById("shareJerome").innerText = formatAmount(jShare);
     document.getElementById("shareJennifer").innerText = formatAmount(nShare);
     document.getElementById("shareTable").innerHTML = shareHtml || '<tr><td colspan="4" style="text-align:center">No overflow.</td></tr>';
+    
     document.getElementById("conTable").innerHTML = contributions.map((c) => `<tr><td>${c.date}</td><td>${c.contributor}</td><td>${c.desc}</td><td>${formatAmount(c.amount)}</td><td><button class="action-edit" onclick="openAddModal('contribution','${c.id}')">Edit</button><button class="action-delete" onclick="deleteItem('con','${c.id}')">Delete</button></td></tr>`).join('');
     document.getElementById("conHistoryTable").innerHTML = historyRows.map(r => `<tr><td>${r.date}</td><td>${r.who}</td><td>${r.details}</td><td>-${formatAmount(r.amt)}</td></tr>`).join('');
     
-    // Mapping tables
     const mapper = (type, label) => (d) => `<tr><td>${d.date}</td><td>${d.desc || d.cat}</td><td>${formatAmount(d.amount)}</td><td><button class="action-edit" onclick="openAddModal('${type}','${d.id}')">Edit</button><button class="action-delete" onclick="deleteItem('${label}','${d.id}')">Delete</button></td></tr>`;
     document.getElementById("incomeTable").innerHTML=fInc.map(mapper('income', 'income')).join('');
     document.getElementById("expenseTable").innerHTML=fExp.map(mapper('budget', 'exp')).join('');
@@ -597,8 +595,12 @@ function filterData(data){
 function updateSavingsTab() {
     const curY = yearSel.value, mode = document.getElementById("savingsFilter").value;
     let summary = {}; let grandTotal = 0;
-    [...incomes, ...expenses, ...unbudgeted, ...liabilities].forEach(item => {
-        let d = new Date(item.date), y = d.getFullYear(), m = d.getMonth(), amt = incomes.find(i=>i.id===item.id) ? item.amount : -item.amount;
+    const all = [...incomes, ...expenses, ...unbudgeted, ...liabilities];
+    all.forEach(item => {
+        let d = new Date(item.date), y = d.getFullYear(), m = d.getMonth();
+        // Check if item is an income to decide if it's positive or negative
+        let isInc = incomes.some(i => i.id === item.id);
+        let amt = isInc ? item.amount : -item.amount;
         grandTotal += amt;
         if (mode === 'monthly' && y == curY) summary[m] = (summary[m]||0) + amt;
         else if (mode === 'yearly') summary[y] = (summary[y]||0) + amt;
@@ -646,15 +648,33 @@ function renderNotes() {
     container.innerHTML = html;
 }
 
-// Selects initialization
-const monthSel=document.getElementById("month"), yearSel=document.getElementById("year");
-fullMonths.forEach((m, i) => monthSel.innerHTML+=`<option value="${i}">${m}</option>`);
-monthSel.innerHTML += `<option value="all">All Months</option>`;
-for(let y=2024; y<=2035; y++) yearSel.innerHTML+=`<option>${y}</option>`;
-yearSel.value=new Date().getFullYear();
-monthSel.onchange=render; yearSel.onchange=render;
+// --- UI EVENT HANDLING ---
+function switchSection(id, el){
+    const genTabs = ['overview', 'income', 'budget', 'unbudget', 'liability', 'savings'];
+    const bizTabs = ['business-hub', 'contribution', 'profitshare', 'harvest', 'business-notes'];
+    document.querySelectorAll('.section').forEach(s=>s.classList.remove('active')); 
+    const target = document.getElementById(id);
+    if(target) target.classList.add('active');
+    
+    if(genTabs.includes(id)) {
+        document.getElementById('subNavGeneral').style.display = 'flex';
+        document.getElementById('subNavBusiness').style.display = 'none';
+        document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('selected'));
+        document.getElementById('nav-overview').classList.add('selected');
+    } else if(bizTabs.includes(id)) {
+        document.getElementById('subNavGeneral').style.display = 'none';
+        document.getElementById('subNavBusiness').style.display = 'flex';
+        document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('selected'));
+        document.getElementById('nav-business-hub').classList.add('selected');
+    }
+    document.querySelectorAll('.sub-nav-link').forEach(l => l.classList.remove('active'));
+    const link = document.getElementById('link-' + id);
+    if(link) link.classList.add('active');
+    if(el && window.innerWidth<768) toggleSidebar(); 
+    localStorage.setItem("activeTab", id);
+    render();
+}
 
-// Standard UI Logic
 function openAddModal(type, id = null) {
     if (type === 'harvest_expense' && harvests.length === 0) { showToast("Create Harvest Account first!", true); return; }
     currentAddType = type; editId = id;
@@ -695,10 +715,17 @@ function openAddModal(type, id = null) {
     document.getElementById('addModal').style.display = 'flex';
 }
 
+const monthSel=document.getElementById("month"), yearSel=document.getElementById("year");
+fullMonths.forEach((m, i) => monthSel.innerHTML+=`<option value="${i}">${m}</option>`);
+monthSel.innerHTML += `<option value="all">All Months</option>`;
+for(let y=2024; y<=2035; y++) yearSel.innerHTML+=`<option>${y}</option>`;
+yearSel.value=new Date().getFullYear();
+monthSel.onchange=render; yearSel.onchange=render;
+
 function triggerFullReset() { document.getElementById('resetModal').style.display = 'flex'; }
 async function executeFullReset() { await db.delete(); location.reload(); }
 
-// Start
+// INITIALIZE
 load();
 </script>
 </body>
